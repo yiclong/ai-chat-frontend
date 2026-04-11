@@ -1,80 +1,93 @@
 <template>
-  <div class="chat-container">
-    <div class="chat-header">
-      <div class="header-title">
-        <el-icon :size="28"><ChatDotRound /></el-icon>
-        <span>AI Chat</span>
+  <div class="chat-layout">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <el-icon :size="28" color="#409eff"><ChatDotRound /></el-icon>
+        <span class="sidebar-title">AI Chat</span>
       </div>
-      <div class="model-selector">
-        <span class="label">模型：</span>
-        <el-select v-model="selectedModel" placeholder="选择模型" size="default" :loading="modelsLoading">
-          <el-option
-            v-for="model in models"
-            :key="model.id"
-            :label="model.id"
-            :value="model.id"
-          >
-            <span>{{ model.id }}</span>
-            <span style="color: #999; font-size: 12px; margin-left: 8px;">{{ model.owned_by }}</span>
-          </el-option>
-        </el-select>
-      </div>
-    </div>
-
-    <div class="chat-messages" ref="messagesContainer">
-      <div v-if="messages.length === 0" class="empty-state">
-        <el-icon :size="64" color="#c0c4cc"><ChatDotRound /></el-icon>
-        <p>开始与AI对话吧</p>
-      </div>
-      <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
-        <div class="message-avatar">
-          <el-avatar v-if="msg.role === 'user'" :size="36">
-            <el-icon><User /></el-icon>
-          </el-avatar>
-          <el-avatar v-else :size="36" style="background: #409eff;">
-            <el-icon><Monitor /></el-icon>
-          </el-avatar>
-        </div>
-        <div class="message-content">
-          <div class="message-role">{{ msg.role === 'user' ? '你' : 'AI助手' }}</div>
-          <div class="message-text">
-            <pre v-if="msg.role === 'assistant'">{{ msg.content }}</pre>
-            <span v-else>{{ msg.content }}</span>
-          </div>
-        </div>
-      </div>
-      <div v-if="loading" class="message assistant">
-        <div class="message-avatar">
-          <el-avatar :size="36" style="background: #409eff;">
-            <el-icon><Monitor /></el-icon>
-          </el-avatar>
-        </div>
-        <div class="message-content">
-          <div class="message-role">AI助手</div>
-          <div class="message-text loading-text">
-            <span class="dot"></span>
-            <span class="dot"></span>
-            <span class="dot"></span>
-          </div>
+      <div class="sidebar-menu">
+        <div class="menu-item active">
+          <el-icon><HomeFilled /></el-icon>
+          <span>主页</span>
         </div>
       </div>
     </div>
 
-    <div class="chat-input">
-      <el-input
-        v-model="inputMessage"
-        type="textarea"
-        :rows="3"
-        placeholder="输入消息..."
-        @keydown.enter.ctrl="sendMessage"
-        :disabled="loading"
-      />
-      <div class="input-actions">
-        <span class="tip">Ctrl + Enter 发送</span>
-        <el-button type="primary" @click="sendMessage" :loading="loading" :disabled="!inputMessage.trim()">
-          <el-icon><Position /></el-icon>
-          发送
-        </el-button>
+    <div class="chat-container">
+      <div class="chat-header">
+        <div class="header-title">
+          <span>AI 对话</span>
+        </div>
+      </div>
+
+      <div class="chat-messages" ref="messagesContainer">
+        <div v-if="messages.length === 0" class="empty-state">
+          <el-icon :size="64" color="#c0c4cc"><ChatDotRound /></el-icon>
+          <p>开始与AI对话吧</p>
+        </div>
+        <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
+          <div class="message-avatar">
+            <el-avatar v-if="msg.role === 'user'" :size="36">
+              <el-icon><User /></el-icon>
+            </el-avatar>
+            <el-avatar v-else :size="36" style="background: #409eff;">
+              <el-icon><Monitor /></el-icon>
+            </el-avatar>
+          </div>
+          <div class="message-content">
+            <div class="message-role">{{ msg.role === 'user' ? '你' : 'AI助手' }}</div>
+            <div class="message-text">
+              <pre v-if="msg.role === 'assistant'">{{ msg.content }}</pre>
+              <span v-else>{{ msg.content }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="loading" class="message assistant">
+          <div class="message-avatar">
+            <el-avatar :size="36" style="background: #409eff;">
+              <el-icon><Monitor /></el-icon>
+            </el-avatar>
+          </div>
+          <div class="message-content">
+            <div class="message-role">AI助手</div>
+            <div class="message-text loading-text">
+              <span class="dot"></span>
+              <span class="dot"></span>
+              <span class="dot"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="chat-input">
+        <el-input
+          v-model="inputMessage"
+          type="textarea"
+          :rows="3"
+          placeholder="输入消息..."
+          @keydown.enter.ctrl="sendMessage"
+          :disabled="loading"
+        />
+        <div class="input-actions">
+          <span class="tip">Ctrl + Enter 发送</span>
+          <div class="action-right">
+            <el-select v-model="selectedModel" placeholder="选择模型" size="default" :loading="modelsLoading" style="width: 200px;">
+              <el-option
+                v-for="model in models"
+                :key="model.id"
+                :label="model.id"
+                :value="model.id"
+              >
+                <span>{{ model.id }}</span>
+                <span style="color: #999; font-size: 12px; margin-left: 8px;">{{ model.owned_by }}</span>
+              </el-option>
+            </el-select>
+            <el-button type="primary" @click="sendMessage" :loading="loading" :disabled="!inputMessage.trim()">
+              <el-icon><Position /></el-icon>
+              发送
+            </el-button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -167,11 +180,62 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.chat-container {
+.chat-layout {
   display: flex;
-  flex-direction: column;
   height: 100vh;
   background: #f5f7fa;
+}
+
+.sidebar {
+  width: 220px;
+  background: #fff;
+  border-right: 1px solid #e4e7ed;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 16px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.sidebar-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.sidebar-menu {
+  padding: 12px 8px;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #606266;
+  transition: all 0.3s;
+}
+
+.menu-item:hover {
+  background: #f5f7fa;
+}
+
+.menu-item.active {
+  background: #ecf5ff;
+  color: #409eff;
+}
+
+.chat-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .chat-header {
@@ -188,24 +252,9 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
   color: #303133;
-}
-
-.model-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.model-selector .label {
-  color: #606266;
-  font-size: 14px;
-}
-
-.model-selector .el-select {
-  width: 220px;
 }
 
 .chat-messages {
@@ -346,6 +395,12 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-top: 12px;
+}
+
+.action-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .tip {

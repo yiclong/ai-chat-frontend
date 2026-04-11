@@ -1,5 +1,4 @@
 import axios from 'axios'
-import { EventSourcePolyfill } from 'event-source-polyfill'
 
 const API_BASE = '/api/chat'
 
@@ -14,39 +13,6 @@ export const chatApi = {
     return response.data
   },
 
-  sendMessage(message, model, onMessage, onError, onComplete) {
-    const eventSource = new EventSourcePolyfill(`${API_BASE}/message`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ message, model })
-    })
-
-    eventSource.onmessage = (event) => {
-      if (event.data === '[DONE]') {
-        eventSource.close()
-        if (onComplete) onComplete()
-        return
-      }
-      try {
-        const data = JSON.parse(event.data)
-        if (data.choices && data.choices[0]?.delta?.content) {
-          onMessage(data.choices[0].delta.content)
-        }
-      } catch (e) {
-        onMessage(event.data)
-      }
-    }
-
-    eventSource.onerror = (error) => {
-      eventSource.close()
-      if (onError) onError(error)
-    }
-
-    return eventSource
-  },
-
   sendMessageStream(message, model, onChunk, onError, onComplete) {
     return fetch(`${API_BASE}/message`, {
       method: 'POST',
@@ -58,6 +24,8 @@ export const chatApi = {
       .then(response => {
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
+        let buffer = ''
+        let currentEvent = ''
 
         function read() {
           reader.read().then(({ done, value }) => {
@@ -65,25 +33,40 @@ export const chatApi = {
               if (onComplete) onComplete()
               return
             }
-            const chunk = decoder.decode(value, { stream: true })
-            const lines = chunk.split('\n')
-            lines.forEach(line => {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6)
-                if (data === '[DONE]') {
-                  if (onComplete) onComplete()
-                  return
-                }
-                try {
-                  const parsed = JSON.parse(data)
-                  if (parsed.choices && parsed.choices[0]?.delta?.content) {
-                    onChunk(parsed.choices[0].delta.content)
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split('\n')
+            buffer = ''
+
+            for (const line of lines) {
+              if (!line.trim()) continue
+
+              if (line.startsWith('event:')) {
+                currentEvent = line.slice(6).trim()
+                continue
+              }
+
+              if (line.startsWith('data:')) {
+                const data = line.slice(5).trim()
+                if (!data) continue
+
+                if (currentEvent === 'raw') {
+                  try {
+                    const parsed = JSON.parse(data)
+                    if (parsed.choices && parsed.choices[0]?.delta?.content) {
+                      onChunk(parsed.choices[0].delta.content)
+                    }
+                  } catch (e) {
+                    if (data && !data.startsWith('{') && !data.startsWith('["')) {
+                      onChunk(data)
+                    }
                   }
-                } catch (e) {
-                  if (data) onChunk(data)
+                } else if (currentEvent === '') {
+                  if (data && !data.startsWith('{')) {
+                    onChunk(data)
+                  }
                 }
               }
-            })
+            }
             read()
           }).catch(onError)
         }
