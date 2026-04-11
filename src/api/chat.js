@@ -34,11 +34,15 @@ export const chatApi = {
               return
             }
             buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split('\n')
-            buffer = ''
-
-            for (const line of lines) {
-              if (!line.trim()) continue
+            
+            while (true) {
+              const newlineIndex = buffer.indexOf('\n')
+              if (newlineIndex === -1) break
+              
+              const line = buffer.slice(0, newlineIndex).trim()
+              buffer = buffer.slice(newlineIndex + 1)
+              
+              if (!line) continue
 
               if (line.startsWith('event:')) {
                 currentEvent = line.slice(6).trim()
@@ -56,8 +60,8 @@ export const chatApi = {
                       onChunk(parsed.choices[0].delta.content)
                     }
                   } catch (e) {}
+                  currentEvent = ''
                 }
-                currentEvent = ''
               }
             }
             read()
