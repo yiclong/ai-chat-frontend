@@ -55,16 +55,9 @@ export const chatApi = {
                     if (parsed.choices && parsed.choices[0]?.delta?.content) {
                       onChunk(parsed.choices[0].delta.content)
                     }
-                  } catch (e) {
-                    if (data && !data.startsWith('{') && !data.startsWith('["')) {
-                      onChunk(data)
-                    }
-                  }
-                } else if (currentEvent === '') {
-                  if (data && !data.startsWith('{')) {
-                    onChunk(data)
-                  }
+                  } catch (e) {}
                 }
+                currentEvent = ''
               }
             }
             read()
