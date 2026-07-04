@@ -1,410 +1,306 @@
 <template>
-  <div class="chat-layout">
-    <div class="sidebar">
-      <div class="sidebar-header">
-        <el-icon :size="28" color="#409eff"><ChatDotRound /></el-icon>
-        <span class="sidebar-title">AI Chat</span>
-      </div>
-      <div class="sidebar-menu">
-        <div class="menu-item active">
-          <el-icon><HomeFilled /></el-icon>
-          <span>主页</span>
-        </div>
-      </div>
-    </div>
-
     <div class="chat-container">
-      <div class="chat-header">
-        <div class="header-title">
-          <span>AI 对话</span>
-        </div>
-      </div>
-
-      <div class="chat-messages" ref="messagesContainer">
-        <div v-if="messages.length === 0" class="empty-state">
-          <el-icon :size="64" color="#c0c4cc"><ChatDotRound /></el-icon>
-          <p>开始与AI对话吧</p>
-        </div>
-        <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
-          <div class="message-avatar">
-            <el-avatar v-if="msg.role === 'user'" :size="36">
-              <el-icon><User /></el-icon>
-            </el-avatar>
-            <el-avatar v-else :size="36" style="background: #409eff;">
-              <el-icon><Monitor /></el-icon>
-            </el-avatar>
-          </div>
-          <div class="message-content">
-            <div class="message-role">{{ msg.role === 'user' ? '你' : 'AI助手' }}</div>
-            <div class="message-text">
-              <pre v-if="msg.role === 'assistant'">{{ msg.content }}</pre>
-              <span v-else>{{ msg.content }}</span>
-            </div>
-          </div>
-        </div>
-        <div v-if="loading" class="message assistant">
-          <div class="message-avatar">
-            <el-avatar :size="36" style="background: #409eff;">
-              <el-icon><Monitor /></el-icon>
-            </el-avatar>
-          </div>
-          <div class="message-content">
-            <div class="message-role">AI助手</div>
-            <div class="message-text loading-text">
-              <span class="dot"></span>
-              <span class="dot"></span>
-              <span class="dot"></span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="chat-input">
-        <el-input
-          v-model="inputMessage"
-          type="textarea"
-          :rows="3"
-          placeholder="输入消息..."
-          @keydown.enter.ctrl="sendMessage"
-          :disabled="loading"
-        />
-        <div class="input-actions">
-          <span class="tip">Ctrl + Enter 发送</span>
-          <div class="action-right">
-            <el-select v-model="selectedModel" placeholder="选择模型" size="default" :loading="modelsLoading" style="width: 200px;">
-              <el-option
-                v-for="model in models"
-                :key="model.id"
-                :label="model.id"
-                :value="model.id"
-              >
-                <span>{{ model.id }}</span>
-                <span style="color: #999; font-size: 12px; margin-left: 8px;">{{ model.owned_by }}</span>
-              </el-option>
+        <div class="chat-header">
+            <h2>AI Chat</h2>
+            <el-select v-model="selectedModel" placeholder="选择模型" class="model-select">
+                <el-option v-for="model in models" :key="model" :label="model" :value="model"/>
             </el-select>
-            <el-button type="primary" @click="sendMessage" :loading="loading" :disabled="!inputMessage.trim()">
-              <el-icon><Position /></el-icon>
-              发送
-            </el-button>
-          </div>
         </div>
-      </div>
+
+        <div class="chat-messages" ref="messagesContainer">
+            <div v-for="(msg, index) in messages" :key="index" :class="['message', msg.role]">
+                <div class="message-content">
+                    <div v-if="msg.reasoning" class="reasoning-section">
+                        <div class="reasoning-header" @click="toggleReasoning(index)">
+                            <span class="reasoning-toggle">{{ msg.showReasoning ? '▼' : '▶' }}</span>
+                            <span>思考过程</span>
+                        </div>
+                        <div v-show="msg.showReasoning" class="reasoning-content"
+                             v-html="renderMarkdown(msg.reasoning)"></div>
+                    </div>
+                    <div v-html="renderMarkdown(msg.content)"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="chat-input">
+            <el-input
+                    v-model="inputMessage"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="输入消息..."
+                    @keydown.enter.ctrl="sendMessage"
+                    :disabled="loading"
+            />
+            <el-button type="primary" @click="sendMessage" :loading="loading"
+                       :disabled="!inputMessage.trim() || !selectedModel">
+                发送
+            </el-button>
+        </div>
     </div>
-  </div>
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
-import { chatApi } from '../api/chat'
+    import {nextTick, onMounted, ref} from 'vue'
+    import {api} from '../api/api.js'
+    import {marked} from 'marked'
+    import hljs from 'highlight.js'
 
-const messages = ref([])
-const inputMessage = ref('')
-const loading = ref(false)
-const selectedModel = ref('')
-const models = ref([])
-const modelsLoading = ref(false)
-const messagesContainer = ref(null)
+    const messages = ref([])
+    const inputMessage = ref('')
+    const selectedModel = ref('')
+    const models = ref([])
+    const loading = ref(false)
+    const messagesContainer = ref(null)
 
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messagesContainer.value) {
-      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    marked.setOptions({
+        highlight: function (code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, {language: lang}).value
+            }
+            return hljs.highlightAuto(code).value
+        },
+        breaks: true
+    })
+
+    const renderMarkdown = (content) => {
+        return marked.parse(content)
     }
-  })
-}
 
-const fetchModels = async () => {
-  modelsLoading.value = true
-  try {
-    const data = await chatApi.getModels()
-    models.value = data || []
-    if (models.value.length > 0 && !selectedModel.value) {
-      selectedModel.value = models.value[0].id
+    const scrollToBottom = async () => {
+        await nextTick()
+        if (messagesContainer.value) {
+            messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+        }
     }
-  } catch (error) {
-    console.error('获取模型列表失败:', error)
-    ElMessage.error('获取模型列表失败')
-  } finally {
-    modelsLoading.value = false
-  }
-}
 
-const sendMessage = async () => {
-  const message = inputMessage.value.trim()
-  if (!message || loading.value) return
+    const toggleReasoning = (index) => {
+        messages.value[index].showReasoning = !messages.value[index].showReasoning
+    }
 
-  messages.value.push({
-    role: 'user',
-    content: message
-  })
-  inputMessage.value = ''
-  loading.value = true
-  scrollToBottom()
+    const parseSSE = (text) => {
+        const events = []
+        const lines = text.split('\n')
+        let currentEvent = null
 
-  const assistantMessage = {
-    role: 'assistant',
-    content: ''
-  }
-  messages.value.push(assistantMessage)
-  scrollToBottom()
+        for (const line of lines) {
+            if (line.startsWith('event:')) {
+                if (currentEvent) events.push(currentEvent)
+                currentEvent = {event: line.slice(6).trim(), data: ''}
+            } else if (line.startsWith('data:')) {
+                if (currentEvent) {
+                    currentEvent.data = line.slice(5).trim()
+                }
+            } else if (line === '' && currentEvent) {
+                events.push(currentEvent)
+                currentEvent = null
+            }
+        }
+        if (currentEvent) events.push(currentEvent)
+        return events
+    }
 
-  try {
-    await chatApi.sendMessageStream(
-      message,
-      selectedModel.value,
-      (chunk) => {
-        assistantMessage.content += chunk
-        scrollToBottom()
-      },
-      (error) => {
-        console.error('发送消息失败:', error)
-        ElMessage.error('发送消息失败，请重试')
-        loading.value = false
-      },
-      () => {
-        loading.value = false
-        scrollToBottom()
-      }
-    )
-  } catch (error) {
-    console.error('发送消息失败:', error)
-    ElMessage.error('发送消息失败，请重试')
-    loading.value = false
-  }
-}
+    const sendMessage = async () => {
+        const message = inputMessage.value.trim()
+        if (!message || !selectedModel.value || loading.value) return
 
-onMounted(() => {
-  fetchModels()
-})
+        messages.value.push({role: 'user', content: message})
+        inputMessage.value = ''
+        loading.value = true
+        await scrollToBottom()
+
+        try {
+            const response = await api.sendMessageStream(message, selectedModel.value)
+
+            if (!response.ok) {
+                throw new Error('请求失败')
+            }
+
+            const reader = response.body.getReader()
+            const decoder = new TextDecoder()
+            let buffer = ''
+            let assistantMessage = {role: 'assistant', content: '', reasoning: '', showReasoning: false}
+            messages.value.push(assistantMessage)
+            const assistantIndex = messages.value.length - 1
+
+            while (true) {
+                const {done, value} = await reader.read()
+                if (done) break
+
+                buffer += decoder.decode(value, {stream: true})
+                const events = parseSSE(buffer)
+                buffer = ''
+
+                for (const event of events) {
+                    if (event.event === 'raw' && event.data) {
+                        try {
+                            const data = JSON.parse(event.data)
+                            const delta = data.choices?.[0]?.delta
+
+                            if (delta) {
+                                if (delta.reasoning_content) {
+                                    messages.value[assistantIndex].reasoning += delta.reasoning_content
+                                    messages.value[assistantIndex].showReasoning = true
+                                }
+                                if (delta.content) {
+                                    messages.value[assistantIndex].content += delta.content
+                                }
+                                await scrollToBottom()
+                            }
+                        } catch (e) {
+                            // JSON解析失败，忽略
+                        }
+                    }
+                }
+            }
+
+            if (messages.value[assistantIndex].reasoning) {
+                messages.value[assistantIndex].showReasoning = false
+            }
+        } catch (error) {
+            console.error('发送消息失败:', error)
+            messages.value.push({role: 'assistant', content: '抱歉，发生了错误，请重试。'})
+        } finally {
+            loading.value = false
+        }
+    }
+
+    onMounted(async () => {
+        try {
+            const data = await api.getModels()
+            models.value = data.models || data || []
+            if (models.value.length > 0) {
+                selectedModel.value = models.value[0].id
+            }
+        } catch (error) {
+            console.error('获取模型列表失败:', error)
+        }
+    })
 </script>
 
 <style scoped>
-.chat-layout {
-  display: flex;
-  height: 100vh;
-  background: #f5f7fa;
-}
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        background: #f5f5f5;
+    }
 
-.sidebar {
-  width: 220px;
-  background: #fff;
-  border-right: 1px solid #e4e7ed;
-  display: flex;
-  flex-direction: column;
-}
+    .chat-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        background: #fff;
+        border-bottom: 1px solid #e4e4e4;
+    }
 
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 20px 16px;
-  border-bottom: 1px solid #e4e7ed;
-}
+    .chat-header h2 {
+        margin: 0;
+        font-size: 20px;
+    }
 
-.sidebar-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-}
+    .model-select {
+        width: 200px;
+    }
 
-.sidebar-menu {
-  padding: 12px 8px;
-}
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+    }
 
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: #606266;
-  transition: all 0.3s;
-}
+    .message {
+        margin-bottom: 16px;
+        display: flex;
+    }
 
-.menu-item:hover {
-  background: #f5f7fa;
-}
+    .message.user {
+        justify-content: flex-end;
+    }
 
-.menu-item.active {
-  background: #ecf5ff;
-  color: #409eff;
-}
+    .message.user .message-content {
+        background: #409eff;
+        color: #fff;
+    }
 
-.chat-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
+    .message.assistant .message-content {
+        background: #fff;
+        color: #333;
+    }
 
-.chat-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 24px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-}
+    .message-content {
+        max-width: 70%;
+        padding: 12px 16px;
+        border-radius: 8px;
+        line-height: 1.6;
+        word-wrap: break-word;
+    }
 
-.header-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 18px;
-  font-weight: 600;
-  color: #303133;
-}
+    .message-content :deep(pre) {
+        background: #282c34;
+        padding: 12px;
+        border-radius: 6px;
+        overflow-x: auto;
+        color: #abb2bf;
+    }
 
-.chat-messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
+    .message-content :deep(code) {
+        font-family: 'Fira Code', monospace;
+        font-size: 14px;
+    }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #909399;
-}
+    .message-content :deep(p) {
+        margin: 8px 0;
+    }
 
-.empty-state p {
-  margin-top: 16px;
-  font-size: 16px;
-}
+    .reasoning-section {
+        margin-bottom: 12px;
+        border-left: 3px solid #e6a23c;
+        padding-left: 12px;
+    }
 
-.message {
-  display: flex;
-  gap: 12px;
-  max-width: 80%;
-  animation: fadeIn 0.3s ease;
-}
+    .reasoning-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        color: #e6a23c;
+        font-size: 14px;
+        font-weight: 500;
+        user-select: none;
+    }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+    .reasoning-toggle {
+        font-size: 12px;
+    }
 
-.message.user {
-  align-self: flex-end;
-  flex-direction: row-reverse;
-}
+    .reasoning-content {
+        margin-top: 8px;
+        padding: 10px 12px;
+        background: #fdf6ec;
+        border-radius: 4px;
+        color: #666;
+        font-size: 14px;
+    }
 
-.message.assistant {
-  align-self: flex-start;
-}
+    .reasoning-content :deep(p) {
+        margin: 4px 0;
+    }
 
-.message-avatar {
-  flex-shrink: 0;
-}
+    .loading {
+        color: #999;
+    }
 
-.message-content {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+    .chat-input {
+        display: flex;
+        gap: 12px;
+        padding: 16px 20px;
+        background: #fff;
+        border-top: 1px solid #e4e4e4;
+    }
 
-.message-role {
-  font-size: 12px;
-  color: #909399;
-}
-
-.message.user .message-role {
-  text-align: right;
-}
-
-.message-text {
-  padding: 12px 16px;
-  border-radius: 12px;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.message.user .message-text {
-  background: #409eff;
-  color: #fff;
-  border-bottom-right-radius: 4px;
-}
-
-.message.assistant .message-text {
-  background: #fff;
-  color: #303133;
-  border-bottom-left-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.message.assistant .message-text pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  font-family: inherit;
-}
-
-.loading-text {
-  display: flex;
-  gap: 4px;
-  padding: 16px 20px !important;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  background: #409eff;
-  border-radius: 50%;
-  animation: bounce 1.4s infinite ease-in-out both;
-}
-
-.dot:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.dot:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes bounce {
-  0%, 80%, 100% {
-    transform: scale(0);
-  }
-  40% {
-    transform: scale(1);
-  }
-}
-
-.chat-input {
-  padding: 16px 24px;
-  background: #fff;
-  border-top: 1px solid #e4e7ed;
-}
-
-.input-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 12px;
-}
-
-.action-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.tip {
-  font-size: 12px;
-  color: #909399;
-}
+    .chat-input .el-textarea {
+        flex: 1;
+    }
 </style>
